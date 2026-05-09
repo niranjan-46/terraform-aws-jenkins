@@ -25,9 +25,9 @@ variable "key_name" {
 }
 
 variable "instance_type" {
-  description = "EC2 instance type"
+  description = "EC2 instance type - UPGRADED to t3.large for better Jenkins performance"
   type        = string
-  default     = "t3.medium"
+  default     = "t3.large"  # UPGRADED: Better performance for Jenkins workloads
 }
 
 variable "root_volume_size" {

@@ -49,7 +49,7 @@ wget https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-
 # Install CloudWatch agent
 dpkg -i -E amazon-cloudwatch-agent.deb
 
-# Create CloudWatch agent configuration
+# Create CloudWatch agent configuration with Jenkins-specific metrics
 cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'CWCONFIG'
 {
   "agent": {
@@ -65,7 +65,7 @@ cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'CWCO
       "disk": {
         "measurement": ["used_percent", "inodes_free"],
         "metrics_collection_interval": 60,
-        "resources": ["*"]
+        "resources": ["*", "/var/jenkins_data"]
       },
       "mem": {
         "measurement": ["mem_used_percent", "mem_available_percent", "mem_total"],
@@ -132,13 +132,69 @@ docker-compose up -d
 
 log "Waiting for Jenkins to initialize..."
 for i in {1..30}; do
-    if curl -sf http://localhost:8080/login > /dev/null 2>&1; then
+    if curl -sf http://localhost:8080/jenkins/login > /dev/null 2>&1; then  # FIXED: Added /jenkins prefix
         log "Jenkins is ready!"
         break
     fi
     sleep 10
 done
 
+# ==============================================================================
+# Install Essential Jenkins Plugins (Post-Deployment)
+# Commit: feat(jenkins): Install essential plugins for better functionality
+# ==============================================================================
+log "Installing essential Jenkins plugins..."
+docker exec jenkins jenkins-plugin-cli --plugins \
+  git:5.0.0 \
+  workflow-aggregator:596.v8c21c96320e0 \
+  credentials-binding:523.vd859a_4b_122e6 \
+  timestamper:1.25 \
+  cloudbees-folder:6.815.v0dd5a_cb_40e0a_ \
+  antisamy-markup-formatter:162.v0e6ec0fcfcf6 \
+  pam-auth:1.10 \
+  matrix-auth:3.1.5 \
+  email-ext:2.102 \
+  mailer:463.vedf8358e006b_ \
+  prometheus:2.2.1 \
+  docker-workflow:563.vd5d2e5c4007f \
+  docker-plugin:1.4
+
+# ==============================================================================
+# Create Jenkins Configuration as Code (JCasC) Setup
+# Commit: feat(jenkins): Configure Jenkins with JCasC for better automation
+# ==============================================================================
+log "Setting up Jenkins Configuration as Code..."
+mkdir -p /var/jenkins_data/casc_configs
+
+# Create basic JCasC configuration
+cat > /var/jenkins_data/casc_configs/jenkins.yaml << 'EOF'
+jenkins:
+  systemMessage: "Jenkins Server - Managed by Terraform"
+  numExecutors: 2
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "${ADMIN_PASSWORD}"
+  authorizationStrategy:
+    globalMatrix:
+      permissions:
+        - "Overall/Administer:admin"
+        - "Overall/Read:authenticated"
+  crumbIssuer:
+    standard:
+      excludeClientIPFromCrumb: false
+  slaveAgentPort: 50000
+unclassified:
+  location:
+    url: "http://localhost:8080/jenkins/"
+  mailer:
+    smtpHost: "localhost"
+    adminAddress: "admin@yourcompany.com"
+EOF
+
 log "Jenkins setup complete!"
+log "Access Jenkins at: http://<ELASTIC-IP>:8080/jenkins"
 log "Initial admin password:"
 docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword

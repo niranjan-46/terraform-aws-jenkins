@@ -5,23 +5,40 @@ services:
     image: jenkins/jenkins:lts
     container_name: jenkins
     restart: unless-stopped
-    privileged: true
+    # REMOVED: privileged: true - Security risk, not needed for Jenkins
     ports:
       - "8080:8080"
       - "50000:50000"
     volumes:
       - /var/jenkins_data:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # For Docker-in-Docker if needed
     environment:
-      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
-      - JENKINS_OPTS=--prefix=/jenkins
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false -Djava.awt.headless=true -Dhudson.model.DirectoryBrowserSupport.CSP=
+      - JENKINS_OPTS=--prefix=/jenkins --httpPort=8080 --httpsPort=-1
+      - JENKINS_SLAVE_AGENT_PORT=50000
+      # Security and performance optimizations
+      - CASC_JENKINS_CONFIG=/var/jenkins_home/casc_configs
+      - JENKINS_ADMIN_EMAIL=admin@yourcompany.com
+      - JENKINS_ADMIN_USER=admin
+      # Memory and performance tuning
+      - JAVA_OPTS=-Xmx2048m -Xms1024m -XX:+UseG1GC -XX:+UseStringDeduplication
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/login"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/jenkins/login"]  # FIXED: Added /jenkins prefix
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     labels:
       com.docker.compose.project: "jenkins"
+      # Monitoring labels
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8080"
+      prometheus.io/path: "/jenkins/prometheus"
 
 volumes:
   jenkins_data:

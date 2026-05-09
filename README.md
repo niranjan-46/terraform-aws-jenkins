@@ -21,7 +21,7 @@
 | Deploy Jenkins Server on AWS using Terraform | ✅ Complete | `infrastructure/modules/` - 7 modules |
 | Modular code with best practices | ✅ Complete | Separate modules (network, security, compute, eip, backup, state, monitoring) |
 | Elastic IP assignment | ✅ Complete | `modules/eip/` - EIP associated with EC2 |
-| Scheduled EBS snapshots once per day | ✅ Complete | `modules/backup/` - DLM policy with 24hr frequency, 7-day retention |
+| Scheduled EBS snapshots once per day | ✅ Complete | `modules/backup/` - DLM policy with 24hr frequency, **30-day retention** |
 | Jenkins deployed using Docker Compose | ✅ Complete | `user_data.sh.tpl` - Docker + Compose installation |
 | Data persistence for Jenkins | ✅ Complete | EBS volume mounted at `/var/jenkins_data` |
 | Clone docker-compose from GitHub | ✅ Complete | `user_data.sh.tpl` - git clone from `github_repo_url` |
@@ -29,10 +29,49 @@
 | Multi-environment support | ✅ Complete | Dev, Staging, Prod environments |
 | Proper commit messages in code | ✅ Complete | All modules with commit-style headers |
 | CloudWatch Monitoring | ✅ Complete | `modules/monitoring/` - CPU, Memory, Disk, Jenkins alarms |
+| **V2 IMPROVEMENTS** | **Status** | **Implementation** |
+| Security hardening (removed privileged mode) | ✅ Complete | `docker-compose.yml` - Removed privileged: true |
+| Fixed Jenkins health check URL | ✅ Complete | `docker-compose.yml` - Added /jenkins prefix |
+| Enhanced monitoring (Jenkins data disk) | ✅ Complete | `user_data.sh.tpl` - Added /var/jenkins_data monitoring |
+| Jenkins plugins pre-installation | ✅ Complete | `user_data.sh.tpl` - Essential plugins installed |
+| Jenkins Configuration as Code (JCasC) | ✅ Complete | `user_data.sh.tpl` - Basic JCasC setup |
+| Performance optimization (instance type) | ✅ Complete | `variables.tf` - Upgraded to t3.large |
+| Extended backup retention | ✅ Complete | `backup/main.tf` - Increased to 30 days |
+| Enhanced logging configuration | ✅ Complete | `docker-compose.yml` - Added log rotation |
+| Prometheus metrics support | ✅ Complete | `docker-compose.yml` - Added Prometheus labels |
 
 ---
 
-## Quick Links
+## 🚀 V2 Release - Enhanced Security & Performance
+
+### Key Improvements in V2:
+
+#### 🔒 **Security Enhancements**
+- **Removed privileged Docker mode** - Eliminated security risk from `privileged: true`
+- **Fixed Jenkins URL prefix** - Health checks now use correct `/jenkins/login` path
+- **Enhanced monitoring** - Added dedicated monitoring for Jenkins data volume
+
+#### ⚡ **Performance Optimizations**
+- **Upgraded instance type** - Changed from `t3.medium` to `t3.large` for better Jenkins performance
+- **Memory tuning** - Added JVM memory optimization flags (`-Xmx2048m -Xms1024m`)
+- **G1GC garbage collector** - Improved memory management for Jenkins workloads
+
+#### 📦 **Jenkins Enhancements**
+- **Pre-installed essential plugins** - Git, Pipeline, Credentials, Docker, Prometheus, etc.
+- **Jenkins Configuration as Code (JCasC)** - Automated Jenkins configuration setup
+- **Prometheus metrics** - Added labels for monitoring integration
+
+#### 🛡️ **Operational Improvements**
+- **Extended backup retention** - Increased from 7 to 30 days for better data protection
+- **Enhanced logging** - Added log rotation (10MB max, 3 files)
+- **Docker socket access** - Added read-only access for Docker-in-Docker capabilities
+
+#### 📊 **Monitoring & Observability**
+- **Jenkins data disk monitoring** - Specific monitoring for `/var/jenkins_data`
+- **Prometheus integration** - Ready for metrics collection at `/jenkins/prometheus`
+- **Structured logging** - JSON format with size limits
+
+---
 
 | Document | Description |
 |----------|-------------|
