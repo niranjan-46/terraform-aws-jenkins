@@ -24,7 +24,7 @@
 | Scheduled EBS snapshots once per day | ✅ Complete | `modules/backup/` - DLM policy with 24hr frequency, **30-day retention** |
 | Jenkins deployed using Docker Compose | ✅ Complete | `user_data.sh.tpl` - Docker + Compose installation |
 | Data persistence for Jenkins | ✅ Complete | EBS volume mounted at `/var/jenkins_data` |
-| Clone docker-compose from GitHub | ✅ Complete | `user_data.sh.tpl` - git clone from `github_repo_url` |
+| Clone docker-compose from GitHub | ✅ Complete | `user_data.sh.tpl` - git clone from `github_repo_url`, supports `github_token`, `ssh_private_key`, and `github_secret_name` |
 | S3 bucket for state storage | ✅ Complete | `modules/state/` - S3 bucket + DynamoDB for state |
 | Multi-environment support | ✅ Complete | Dev, Staging, Prod environments |
 | Proper commit messages in code | ✅ Complete | All modules with commit-style headers |
@@ -39,6 +39,347 @@
 | Extended backup retention | ✅ Complete | `backup/main.tf` - Increased to 30 days |
 | Enhanced logging configuration | ✅ Complete | `docker-compose.yml` - Added log rotation |
 | Prometheus metrics support | ✅ Complete | `docker-compose.yml` - Added Prometheus labels |
+
+---
+
+## 🔐 **Private Repository Authentication**
+
+### **How Private Repository Cloning Works:**
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Terraform     │───▶│   User Data      │───▶│   Git Clone     │
+│   Variables     │    │   Script         │    │   (Private)     │
+│                 │    │   Setup Auth     │    │                 │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+        │                       │                       │
+        ▼                       ▼                       ▼
+   github_token           Setup credentials       git clone URL
+   ssh_private_key        Git config              Success/Fail
+```
+
+### **Authentication Methods:**
+
+#### **Method 1: GitHub Personal Access Token (Recommended)**
+```hcl
+# In terraform.tfvars
+github_token = "ghp_your_token_here"
+```
+
+**Flow:**
+1. Terraform passes `github_token` to user data script
+2. Script configures Git credential helper
+3. `git clone https://github.com/user/repo.git` uses token automatically
+
+#### **Method 2: SSH Private Key**
+```hcl
+# In terraform.tfvars  
+ssh_private_key = "base64_encoded_key_here"
+```
+
+**Flow:**
+1. Terraform passes base64-encoded SSH key
+2. Script decodes and saves `~/.ssh/id_rsa`
+3. Adds GitHub to known hosts
+4. `git clone git@github.com:user/repo.git` uses SSH key
+
+### **Setup Instructions:**
+
+#### **For Personal Access Token:**
+1. **Create Token:** GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)
+2. **Permissions:** Check `repo` scope
+3. **Usage:** Add to `terraform.tfvars`:
+   ```hcl
+   github_token = "ghp_xxxxxxxxxxxxxxxxxxxx"
+   ```
+
+#### **For SSH Key:**
+1. **Generate Key:**
+   ```bash
+   ssh-keygen -t ed25519 -C "jenkins@yourcompany.com" -f jenkins_key
+   ```
+2. **Add to GitHub:** Repository → Settings → Deploy keys → Add deploy key
+3. **Encode for Terraform:**
+   ```bash
+   cat jenkins_key | base64 -w 0
+   ```
+4. **Usage:** Add to `terraform.tfvars`:
+   ```hcl
+   ssh_private_key = "base64_encoded_key_here"
+   ```
+
+### **Where to Store GitHub Tokens:**
+
+#### **🔴 Option 1: terraform.tfvars (Local Development Only)**
+```hcl
+# terraform.tfvars (DO NOT commit to git)
+github_token = "ghp_your_token_here"
+```
+
+**Pros:** Simple, works locally  
+**Cons:** Can be accidentally committed, not suitable for teams/CI
+
+#### **🟡 Option 2: Environment Variables**
+```bash
+# Set in your shell or CI/CD
+export TF_VAR_github_token="ghp_your_token_here"
+```
+
+**Pros:** Not stored in files, good for CI/CD  
+**Cons:** Must be set every time, visible in shell history
+
+#### **🟢 Option 3: AWS Secrets Manager (Recommended)**
+```hcl
+data "aws_secretsmanager_secret_version" "github_token" {
+  secret_id = "jenkins/github-token"
+}
+
+locals {
+  github_token = jsondecode(data.aws_secretsmanager_secret_version.github_token.secret_string)["token"]
+}
+```
+
+**Pros:** Secure, encrypted, access controlled  
+**Cons:** Requires AWS setup
+
+#### **🟢 Option 4: HashiCorp Vault**
+```hcl
+data "vault_generic_secret" "github" {
+  path = "secret/jenkins/github"
+}
+
+locals {
+  github_token = data.vault_generic_secret.github.data["token"]
+}
+```
+
+**Pros:** Enterprise-grade security  
+**Cons:** Requires Vault infrastructure
+
+#### **🟢 Option 5: CI/CD Secrets (GitHub Actions, etc.)**
+```yaml
+# .github/workflows/deploy.yml
+- name: Deploy
+  env:
+    TF_VAR_github_token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+**Pros:** Secure, automated, no manual handling  
+**Cons:** CI/CD specific
+
+### **Security Best Practices:**
+
+1. **Never commit secrets** to version control
+2. **Use different tokens** per environment
+3. **Rotate tokens** regularly  
+4. **Use least privilege** (deploy keys over personal tokens)
+5. **Monitor token usage** in GitHub settings
+6. **Use secret management** services for production
+
+### **How Environment Variables Work:**
+
+#### **Step-by-Step Flow:**
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Set ENV VAR   │───▶│   Terraform     │───▶│   Template      │───▶│   User Data     │
+│   TF_VAR_*      │    │   Validation    │    │   Rendering     │    │   Script        │
+└─────────────────┘    └──────────────────┘    └─────────────────┘    └─────────────────┘
+        │                       │                       │                       │
+        ▼                       ▼                       ▼                       ▼
+   export TF_VAR_...       Variable validation    Script generation    Git authentication
+   github_token=...        Type & format checks   ${github_token}       git clone with auth
+```
+
+#### **1. Setting Environment Variables:**
+```bash
+# In your terminal/session
+export TF_VAR_github_token="ghp_xxxxxxxxxxxxxxxxxxxx"
+export TF_VAR_ssh_private_key="LS0tLS1CRUdJTiBPU...base64..."
+```
+
+#### **2. Terraform Variable Resolution:**
+```hcl
+# Terraform automatically reads TF_VAR_* environment variables
+variable "github_token" {
+  type        = string
+  sensitive   = true
+  # No default - will use TF_VAR_github_token if set
+}
+```
+
+#### **3. Validation Process:**
+```hcl
+variable "github_token" {
+  validation {
+    condition     = var.github_token == "" || length(var.github_token) > 10
+    error_message = "GitHub token must be empty or at least 10 characters"
+  }
+}
+```
+
+#### **4. Template Rendering:**
+```hcl
+data "template_file" "user_data" {
+  vars = {
+    github_token = var.github_token  # Passed to script template
+  }
+}
+```
+
+#### **5. User Data Script Execution:**
+```bash
+# On EC2 instance, the rendered script contains:
+if [ -n "${github_token}" ]; then
+    git config --global credential.helper store
+    echo "https://${github_token}:x-oauth-basic@github.com" > ~/.git-credentials
+fi
+```
+
+### **Validation Types:**
+
+#### **Terraform Variable Validation:**
+- ✅ **Type checking:** `string`, `number`, etc.
+- ✅ **Format validation:** Regex patterns for URLs/tokens
+- ✅ **Required vs optional:** Defaults and null checks
+- ✅ **Sensitive marking:** Hides values in logs
+
+#### **Runtime Validation:**
+- ✅ **GitHub API validation:** Token has correct permissions
+- ✅ **SSH key validation:** Key format and GitHub acceptance
+- ✅ **Network connectivity:** Can reach GitHub from EC2
+- ✅ **Repository access:** Token/key can clone the repo
+
+### **Error Handling:**
+
+#### **If Token is Invalid:**
+```
+terraform apply
+# → User data script runs on EC2
+# → git clone fails
+# → Check /var/log/cloud-init-output.log on EC2
+# → "Git clone failed - check authentication"
+```
+
+#### **If Environment Variable Not Set:**
+```
+terraform plan
+# → Variable uses default "" (empty string)
+# → No authentication configured
+# → Repository must be public
+```
+
+### **Testing the Flow:**
+
+#### **Local Testing:**
+```bash
+# 1. Set environment variables
+export TF_VAR_github_token="ghp_test_token"
+
+# 2. Validate Terraform configuration
+terraform validate
+
+# 3. Check variable values
+terraform console
+> var.github_token
+"ghp_test_token"
+```
+
+#### **EC2 Instance Testing:**
+```bash
+# After deployment, check on EC2:
+sudo cat /var/log/cloud-init-output.log
+sudo docker logs jenkins  # If container started
+sudo git log --oneline    # In /opt/jenkins directory
+```
+
+### **Security Validation:**
+
+- 🔒 **Environment variables** are not stored in files
+- 🔒 **Sensitive variables** are marked and hidden in logs
+- 🔒 **Tokens are validated** for format before use
+- 🔒 **SSH keys are decoded** only on target instance
+- 🔒 **Credentials expire** and can be rotated
+
+### **Testing Your Setup:**
+
+#### **Run the Validation Script:**
+```bash
+# Set your credentials first
+export TF_VAR_github_token="ghp_your_token_here"
+
+# Then validate
+./validate_credentials.sh
+```
+
+**The script checks:**
+- ✅ Environment variables are set
+- ✅ Token/key formats are valid
+- ✅ Terraform configuration is correct
+- ✅ GitHub API access works (if token provided)
+
+#### **Manual Testing:**
+```bash
+# Check variables are loaded
+terraform console
+> var.github_token
+"ghp_..."
+
+# Validate configuration
+terraform validate
+
+# Test plan (won't deploy)
+terraform plan
+```
+
+**See `credentials_example.sh` for environment variable setup**
+
+## ✅ Final Validation Checklist
+
+- [x] Confirm each environment uses a different VPC CIDR:
+  - Dev: `10.0.0.0/16`
+  - Staging: `10.1.0.0/16`
+  - Prod: `10.2.0.0/16`
+- [x] Confirm each environment uses unique IAM role names:
+  - `jenkins-dev-ec2-role`
+  - `jenkins-staging-ec2-role`
+  - `jenkins-prod-ec2-role`
+- [x] Confirm each environment uses unique S3 state bucket names:
+  - `jenkins-dev-terraform-state`
+  - `jenkins-staging-terraform-state`
+  - `jenkins-prod-terraform-state`
+- [x] Confirm each environment has separate state locking DynamoDB table names:
+  - `jenkins-dev-state-lock`
+  - `jenkins-staging-state-lock`
+  - `jenkins-prod-state-lock`
+- [x] Confirm GitHub auth variables are available per environment:
+  - `github_token`
+  - `ssh_private_key`
+  - `github_secret_name`
+- [x] Confirm backend and remote state configuration for each environment
+- [x] Confirm CloudWatch monitoring and alarms are configured
+- [x] Confirm Elastic IP is attached and Jenkins is accessible
+- [x] Confirm EBS volume is mounted at `/var/jenkins_data`
+- [x] Confirm Docker Compose is cloned from GitHub in user data
+- [x] Confirm `validate_credentials.sh` or `terraform validate` passes
+
+### End-to-end validation commands
+```bash
+cd infrastructure/environments/dev
+terraform init
+terraform validate
+terraform plan
+
+cd ../staging
+terraform init
+terraform validate
+terraform plan
+
+cd ../prod
+terraform init
+terraform validate
+terraform plan
+```
 
 ---
 

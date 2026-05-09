@@ -119,6 +119,9 @@ module "jenkins_instance" {
   data_volume_device   = var.data_volume_device
   availability_zone    = var.availability_zone
   github_repo_url      = var.github_repo_url
+  github_token         = var.github_token
+  ssh_private_key      = var.ssh_private_key
+  github_secret_name   = var.github_secret_name
 
   tags = local.common_tags
 }

@@ -99,9 +99,32 @@ variable "data_volume_device" {
 }
 
 variable "github_repo_url" {
-  description = "GitHub repository URL for docker-compose"
+  description = "GitHub repository URL for docker-compose (use HTTPS for tokens, SSH for deploy keys)"
+  type        = string
+  default     = ""  # Example: "https://github.com/yourorg/terraform-aws-jenkins.git"
+
+  validation {
+    condition     = var.github_repo_url == "" || can(regex("^(https://github\\.com/.+/.+\\.git|git@github\\.com:.+/.+\\.git)$", var.github_repo_url))
+    error_message = "GitHub repo URL must be HTTPS or SSH format, or empty"
+  }
+}
+variable "github_secret_name" {
+  description = "AWS Secrets Manager secret name for GitHub credentials"
   type        = string
   default     = ""
+}
+variable "github_token" {
+  description = "GitHub personal access token (for HTTPS cloning of private repos)"
+  type        = string
+  default     = ""  # Set in terraform.tfvars or CI/CD secrets
+  sensitive   = true
+}
+
+variable "ssh_private_key" {
+  description = "Base64 encoded SSH private key (for SSH cloning of private repos)"
+  type        = string
+  default     = ""  # Set in terraform.tfvars or CI/CD secrets
+  sensitive   = true
 }
 
 variable "allowed_cidr_blocks" {

@@ -93,14 +93,65 @@ CWCONFIG
 log "CloudWatch agent installed and started"
 
 # ==============================================================================
+# Setup Git Authentication for Private Repositories
+# Supports GitHub token, SSH key, and AWS Secrets Manager
+# ==============================================================================
+log "Setting up Git authentication for private repositories..."
+
+if [ -n "${github_secret_name}" ]; then
+    log "🔐 Fetching GitHub secret from AWS Secrets Manager..."
+    SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id "${github_secret_name}" --query SecretString --output text)
+    github_token=$(echo "${SECRET_JSON}" | jq -r '.github_token // empty')
+    ssh_private_key=$(echo "${SECRET_JSON}" | jq -r '.ssh_private_key // empty')
+
+    if [ -n "${github_token}" ]; then
+        log "✅ GitHub token retrieved from Secrets Manager"
+    fi
+    if [ -n "${ssh_private_key}" ]; then
+        log "✅ SSH private key retrieved from Secrets Manager"
+    fi
+fi
+
+# Method 1: GitHub Personal Access Token (HTTPS)
+if [ -n "${github_token}" ]; then
+    log "🔑 Configuring GitHub token authentication..."
+    git config --global credential.helper store
+    echo "https://${github_token}:x-oauth-basic@github.com" > ~/.git-credentials
+    log "✅ GitHub token configured for HTTPS authentication"
+
+# Method 2: SSH Private Key
+elif [ -n "${ssh_private_key}" ]; then
+    log "🔐 Setting up SSH key authentication..."
+    mkdir -p ~/.ssh
+    echo "${ssh_private_key}" | base64 -d > ~/.ssh/id_rsa
+    chmod 600 ~/.ssh/id_rsa
+    ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+    git config --global core.sshCommand "ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes"
+    log "✅ SSH key configured for Git authentication"
+
+else
+    log "⚠️  No authentication provided - repository must be public"
+    log "   For private repos, set 'github_token', 'ssh_private_key', or 'github_secret_name'"
+fi
+
+# ==============================================================================
 # Clone Docker Compose from GitHub
+# Now supports both public and private repositories
 # ==============================================================================
 log "Cloning docker-compose from GitHub..."
 if [ -n "${github_repo_url}" ]; then
     cd /opt
     rm -rf jenkins
-    git clone "${github_repo_url}" jenkins
-    cd jenkins
+
+    log "📥 Executing: git clone ${github_repo_url}"
+    if git clone "${github_repo_url}" jenkins; then
+        log "✅ Repository cloned successfully"
+        cd jenkins
+    else
+        log "❌ Git clone failed - check authentication and repository URL"
+        log "   Repository URL: ${github_repo_url}"
+        exit 1
+    fi
 else
     log "No GitHub URL provided, creating docker-compose locally..."
     mkdir -p /opt/jenkins

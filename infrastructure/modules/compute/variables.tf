@@ -54,7 +54,27 @@ variable "availability_zone" {
 }
 
 variable "github_repo_url" {
-  description = "GitHub repository URL"
+  description = "GitHub repository URL for docker-compose files (supports both public and private repos)"
+  type        = string
+  default     = ""
+}
+
+variable "github_token" {
+  description = "GitHub personal access token for private repositories (optional - for HTTPS auth)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "ssh_private_key" {
+  description = "Base64 encoded SSH private key for Git authentication (optional - for SSH auth)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "github_secret_name" {
+  description = "AWS Secrets Manager secret name for GitHub authentication (optional)"
   type        = string
   default     = ""
 }
