@@ -4,3 +4,8 @@
 *.tfplan
 *.log
 .DS_Store
+
+# Sensitive files - DO NOT COMMIT
+terraform.tfvars
+*.tfvars
+!terraform.tfvars.example

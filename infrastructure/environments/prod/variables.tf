@@ -104,6 +104,26 @@ variable "github_repo_url" {
   default     = ""
 }
 
+variable "github_secret_name" {
+  description = "AWS Secrets Manager secret name for GitHub credentials"
+  type        = string
+  default     = ""
+}
+
+variable "github_token" {
+  description = "GitHub personal access token (for HTTPS cloning of private repos)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "ssh_private_key" {
+  description = "Base64 encoded SSH private key (for SSH cloning of private repos)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "allowed_cidr_blocks" {
   description = "Allowed CIDR blocks for SSH access"
   type        = list(string)

@@ -19,6 +19,16 @@ data "aws_ami" "ubuntu" {
   }
 }
 
+data "aws_region" "current" {}
+
+data "aws_caller_identity" "current" {}
+
+# ------------------------------------------------------------------------------
+# User Data Template
+# Cloud-init script for instance initialization and Jenkins deployment
+# Commit: chore(compute): Configure user data for Docker and Jenkins setup
+# ------------------------------------------------------------------------------
+
 # ------------------------------------------------------------------------------
 # User Data Template
 # Cloud-init script for instance initialization and Jenkins deployment
@@ -28,8 +38,11 @@ data "template_file" "user_data" {
   template = file("${path.module}/templates/user_data.sh.tpl")
 
   vars = {
-    github_repo_url = var.github_repo_url
-    docker_volume   = var.data_volume_device
+    github_repo_url   = var.github_repo_url
+    github_token      = var.github_token
+    ssh_private_key   = var.ssh_private_key
+    github_secret_name = var.github_secret_name
+    docker_volume     = var.data_volume_device
   }
 }
 
@@ -73,6 +86,29 @@ resource "aws_iam_role_policy_attachment" "ssm_core" {
 resource "aws_iam_role_policy_attachment" "cloudwatch_agent" {
   role       = aws_iam_role.ec2_role.name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+
+resource "aws_iam_role_policy" "github_secrets_access" {
+  count = var.github_secret_name != "" ? 1 : 0
+
+  name = "${var.project_name}-${var.environment}-github-secrets-access"
+  role = aws_iam_role.ec2_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret"
+        ]
+        Resource = [
+          format("arn:aws:secretsmanager:%s:%s:secret:%s*", data.aws_region.current.name, data.aws_caller_identity.current.account_id, var.github_secret_name)
+        ]
+      }
+    ]
+  })
 }
 
 # ------------------------------------------------------------------------------

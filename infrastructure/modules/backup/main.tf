@@ -8,13 +8,13 @@
 # DLM Lifecycle Policy
 # Automated daily snapshots of Jenkins data EBS volume
 # - Frequency: Daily (24 hours)
-# - Retention: 7 days
+# - Retention: 30 days (INCREASED for better data protection)
 # - Target: Jenkins data EBS volume
-# Commit: feat(backup): Create DLM policy for daily snapshots
+# Commit: feat(backup): Create DLM policy for daily snapshots with extended retention
 # ------------------------------------------------------------------------------
 resource "aws_dlm_lifecycle_policy" "daily_snapshots" {
   name        = "${var.project_name}-${var.environment}-daily-backup"
-  description = "Daily EBS snapshots for Jenkins data volume"
+  description = "Daily EBS snapshots for Jenkins data volume with 30-day retention"
 
   state = "ENABLED"
 
@@ -24,11 +24,12 @@ resource "aws_dlm_lifecycle_policy" "daily_snapshots" {
     schedules {
       name           = "DailyBackup"
       frequency      = "24hours"
-      retention_days = 7
+      retention_days = 30  # INCREASED: Better retention for production workloads
       copy_tags      = true
 
       tags_to_add {
         BackupType = "DailySnapshot"
+        Retention  = "30Days"
       }
     }
   }
